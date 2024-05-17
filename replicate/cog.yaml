@@ -1,0 +1,16 @@
+build:
+  gpu: false
+  python_version: "3.8"
+  system_packages:
+    - "ffmpeg"
+    - "libsm6"
+    - "libxext6"
+  python_packages:
+    - "pillow==10.3.0"
+    - "ultralytics==8.2.11"
+    - "torch==2.3.0"
+    - "torchvision==0.18.0"
+    - "numpy==1.24.4"
+    - "opencv-python==4.9.0.80"
+
+predict: "predict.py:Predictor"
