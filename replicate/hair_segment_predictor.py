@@ -11,6 +11,8 @@ class HairSegmentPredictor:
     def find_mask(self, original_image_path):
         img, masks = self.find_contours(original_image_path)
         b_mask = np.zeros(img.shape[:2], np.uint8)
+        if not masks:
+            return (img, b_mask)
 
         for contour in masks.xy:
             contour = contour.astype(np.int32)
