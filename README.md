@@ -15,3 +15,7 @@ In the post process, it uses [k-means clustering](https://en.wikipedia.org/wiki/
 followed by [BFS](https://en.wikipedia.org/wiki/Breadth-first_search) on similar pixels,
 to separate hair pixels.
 
+# Colab
+You can play around with the implementation in the [Google Colab](https://colab.research.google.com/drive/1nHIAV7oKPMpWNYgg3wNO9oeKvTfAqbLG?usp=sharing).
+Notice, its `.ipynb` file is also saved in this repository if you prefer local Jupyter lab instance.
+
