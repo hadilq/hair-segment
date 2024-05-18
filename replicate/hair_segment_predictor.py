@@ -41,7 +41,7 @@ class HairSegmentPredictor:
                             self.log(1, "range mask: {0}, x: {1}, y: {1}".format(mask, x, y))
                             b_mask[y][x] = 255
 
-            b_mask = cv.bitwise_or(b_mask, self.follow_hairs(img, contour_b_mask, hair_palette))
+            # b_mask = cv.bitwise_or(b_mask, self.follow_hairs(img, contour_b_mask, hair_palette))
             b_mask = self.fill_holes(img, b_mask)
 
         return (img, b_mask)
