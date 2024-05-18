@@ -11,7 +11,7 @@ class HairSegmentPredictor:
         self.model = YOLO(dir_path + '/best.pt')
 
     def find_mask(self, original_image_path):
-        img, hsv_img, masks = self.find_contours(original_image_path)
+        img, masks = self.find_contours(original_image_path)
         b_mask = np.zeros(img.shape[:2], np.uint8)
         if not masks:
             return (img, b_mask)
@@ -21,14 +21,13 @@ class HairSegmentPredictor:
             contour = contour.reshape(-1, 1, 2) # make it into a shape that drawContours prefers
             contour_b_mask = np.zeros(img.shape[:2], np.uint8)
             _ = cv.drawContours(contour_b_mask, [contour], -1, (255, 255, 255), cv.FILLED)
-            hair_color, hair_label, label, vectorized_pixels, map_xy_to_index = self.find_hair_color(hsv_img, contour_b_mask)
+            hair_color, hair_label, label, vectorized_pixels, map_xy_to_index = self.find_hair_color(img, contour_b_mask)
             label, center = self.optimize_k_means(vectorized_pixels, hair_color)
             self.log(3, "center : {0}, hair_color: {1}".format(center, hair_color))
             label, hair_label, hair_palette = self.make_hair_palette(label, center, hair_color)
-            hair_colors_range = self.make_hair_colors_range(hsv_img, contour_b_mask, map_xy_to_index, label, hair_label)
             self.log(3, "hair_palette : {0}".format(hair_palette))
-            range_mask = self.make_range_base_mask(hsv_img, hair_palette, hair_color, hair_colors_range)
-
+            hair_colors_range = self.make_hair_colors_range(img, contour_b_mask, map_xy_to_index, label, hair_label)
+            range_mask = self.make_range_base_mask(img, hair_color, hair_colors_range)
 
             for y, mask_y in enumerate(contour_b_mask):
                 for x, mask in enumerate(mask_y):
@@ -43,7 +42,7 @@ class HairSegmentPredictor:
                             b_mask[y][x] = 255
 
             b_mask = cv.bitwise_or(b_mask, self.follow_hairs(img, contour_b_mask, hair_palette))
-            b_mask = self.fill_holes(hsv_img, b_mask)
+            b_mask = self.fill_holes(img, b_mask)
 
         return (img, b_mask)
 
@@ -55,8 +54,7 @@ class HairSegmentPredictor:
 
         original_image = cv.imread(original_image_path)
         img = cv.cvtColor(original_image, cv.COLOR_BGR2RGB)
-        hsv_img = cv.cvtColor(original_image, cv.COLOR_BGR2HSV)
-        return (img, hsv_img, masks)
+        return (img, masks)
 
     def find_hair_color(self, img, b_mask):
         map_xy_to_index = {}
@@ -125,8 +123,8 @@ class HairSegmentPredictor:
     def make_hair_palette(self, label, center, hair_color):
         """
         label is the list of labels.
-        center is the list of colors of each label. Color in HSV.
-        hair_color is the color of hair in HSV.
+        center is the list of colors of each label. Color in RGB.
+        hair_color is the color of hair in RGB.
         """
         if len(label) <= 2:
             self.log(3, "label's len is {0}".format(label))
@@ -137,11 +135,10 @@ class HairSegmentPredictor:
 
         # by putting hair_av_color in the center, clustering centers to hair and not hair.
         polar = [[]] * len(center)
-        h_car = self.hsv_to_cart(hair_color[0], hair_color[1], hair_color[2])
         for i, c in enumerate(center):
-            c_car = self.hsv_to_cart(c[0], c[1], c[2])
-            p = self.cart2pol_coordinate(c_car[0] - h_car[0], c_car[1] - h_car[1], c_car[2] - h_car[2])
-            polar[i] = np.array(p)
+            c_polar = self.cart2pol_coordinate(c[0] - hair_color[0], c[1] - hair_color[1], c[2] - hair_color[2])
+            polar[i] = np.array(c_polar)
+
         polar = np.array(polar)
         polar = np.float32(polar)
 
@@ -166,7 +163,7 @@ class HairSegmentPredictor:
 
         return binary_label, hair_label, hair_palette
 
-    def make_hair_colors_range(self, hsv_img, contour_b_mask, map_xy_to_index, label, hair_label):
+    def make_hair_colors_range(self, img, contour_b_mask, map_xy_to_index, label, hair_label):
         hair_colors_range = []
         for y, mask_y in enumerate(contour_b_mask):
             for x, mask in enumerate(mask_y):
@@ -174,15 +171,19 @@ class HairSegmentPredictor:
                     index = map_xy_to_index[(x, y)]
                     l = label[index][0]
                     if l == hair_label:
-                        hair_colors_range.append(np.float32(hsv_img[y][x]))
+                        hair_colors_range.append(np.float32(img[y][x]))
+
         return hair_colors_range
 
 
-    def make_range_base_mask(self, hsv_img, hair_palette, hair_color, hair_colors_range):
-        b_mask = np.zeros(hsv_img.shape[:2], np.uint8)
-        for c in hair_colors_range:
+    def make_range_base_mask(self, img, hair_color, hair_colors_range):
+        b_mask = np.zeros(img.shape[:2], np.uint8)
+        hsv_img = cv.cvtColor(img, cv.COLOR_RGB2HSV)
+        hair_color_in_hsv = cv.cvtColor(np.array([[hair_color]]), cv.COLOR_RGB2HSV)[0][0]
+        hair_colors_range_in_hsv = cv.cvtColor(np.array([hair_colors_range]), cv.COLOR_RGB2HSV)[0]
+        for c in hair_colors_range_in_hsv:
             lower = np.array([c[0], 0, 0])
-            upper = np.array([hair_color[0], 255, 255])
+            upper = np.array([hair_color_in_hsv[0], 255, 255])
             self.log(1, "lower: {0}, upper: {1}".format(lower.dtype, upper.dtype))
             mask = cv.inRange(hsv_img, lower, upper)
             b_mask = cv.bitwise_or(b_mask, mask)
@@ -192,7 +193,7 @@ class HairSegmentPredictor:
         return self.follow_hairs_2(img, b_mask, hair_palette)
 
     def follow_hairs_1(self, img, b_mask, hair_palette):
-        epsilon = 40.0
+        epsilon = 35.0
         directions = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, -1), (-1, 1)]
         visited = np.zeros(img.shape[:2] + (len(hair_palette),), np.bool_)
         result_b_mask = np.zeros(img.shape[:2], np.uint8)
@@ -223,7 +224,7 @@ class HairSegmentPredictor:
         return result_b_mask
 
     def follow_hairs_2(self, img, b_mask, hair_palette):
-        epsilon = 0.5
+        epsilon = 0.25
         directions = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, -1), (-1, 1)]
         visited = np.zeros(img.shape[:2], np.bool_)
         result_b_mask = np.zeros(img.shape[:2], np.uint8)
