@@ -43,6 +43,7 @@ class HairSegmentPredictor:
                             b_mask[y][x] = 255
 
             b_mask = cv.bitwise_or(b_mask, self.follow_hairs(img, contour_b_mask, hair_palette))
+            b_mask = self.fill_holes(hsv_img, b_mask)
 
         return (img, b_mask)
 
@@ -222,7 +223,7 @@ class HairSegmentPredictor:
         return result_b_mask
 
     def follow_hairs_2(self, img, b_mask, hair_palette):
-        epsilon = 2.5
+        epsilon = 0.5
         directions = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, -1), (-1, 1)]
         visited = np.zeros(img.shape[:2], np.bool_)
         result_b_mask = np.zeros(img.shape[:2], np.uint8)
@@ -250,6 +251,15 @@ class HairSegmentPredictor:
                         bfs_walk(x, y, img[y][x])
 
         return result_b_mask
+
+    def fill_holes(self, img, b_mask):
+        img_floodfill = b_mask.copy()
+        h, w = img.shape[:2]
+        mask = np.zeros((h+2, w+2), np.uint8)
+
+        cv.floodFill(img_floodfill, mask, (0,0), 255);
+        img_floodfill_inv = cv.bitwise_not(img_floodfill)
+        return b_mask | img_floodfill_inv
 
     def hsv_to_cart(self, H, S, V):
         """
@@ -291,9 +301,8 @@ class HairSegmentPredictor:
         if level > 1:
             print(s)
 
-## Helper function to predict and show
-def predict_and_show(image_path):
-    from PIL import Image as Img
+## Helper function to predict
+def predict(image_path):
     hair_segment_predictor = HairSegmentPredictor()
     hair_segment_predictor.setup()
 
@@ -301,8 +310,15 @@ def predict_and_show(image_path):
 
     for x in range(len(b_mask)):
       for y in range(len(b_mask[0])):
-        if b_mask[x][y] == 255:
+        if b_mask[x][y]:
           img[x][y] = [255,255,255]
+    return img
 
+
+## Helper function to predict and show
+def predict_and_show(image_path):
+    img = predict(image_path)
+
+    from PIL import Image as Img
     Img.fromarray(img).show()
 
