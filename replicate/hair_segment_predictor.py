@@ -259,6 +259,9 @@ class HairSegmentPredictor:
         mask = np.zeros((h+2, w+2), np.uint8)
 
         cv.floodFill(img_floodfill, mask, (0,0), 255);
+        cv.floodFill(img_floodfill, mask, (h - 1, w - 1), 255);
+        cv.floodFill(img_floodfill, mask, (0, w - 1), 255);
+        cv.floodFill(img_floodfill, mask, (h - 1, 0), 255);
         img_floodfill_inv = cv.bitwise_not(img_floodfill)
         return b_mask | img_floodfill_inv
 
