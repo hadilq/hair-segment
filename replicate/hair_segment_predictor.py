@@ -191,6 +191,8 @@ def make_hsv_dataset(input_dir, output_dir):
         if os.path.exists(data_output_path):
             continue
         data = make_hsv_data(image_path, output_dir, hair_segment_predictor)
+        if not data:
+            continue
         hair_segment_predictor.log(4, "data: {0}".format(data))
         with open(data_output_path, 'w') as f:
             json.dump(data, f)
@@ -201,6 +203,8 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
         hair_segment_predictor.setup()
 
     img, b_mask = hair_segment_predictor.find_mask(image_path)
+    if not b_mask:
+        return None
 
     sample = []
     for y in range(b_mask.shape[0]):
