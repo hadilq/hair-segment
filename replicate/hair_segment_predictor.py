@@ -16,55 +16,20 @@ class HairSegmentPredictor:
         if not masks:
             return (img, b_mask)
 
-        window_top_left_y = img.shape[0]
-        window_top_left_x = img.shape[1]
-        window_bottom_right_y = 0
-        window_bottom_right_x = 0
+        self.fill_b_mask(b_mask, masks)
+        expanded_b_mask = self.fill_expanded_b_mask(b_mask)
 
-        for contour in masks.xy:
-            contour = contour.astype(np.int32)
-            contour = contour.reshape(-1, 1, 2) # make it into a shape that drawContours prefers
-            contour_b_mask = np.zeros(img.shape[:2], np.uint8)
-            _ = cv.drawContours(b_mask, [contour], -1, (255, 255, 255), cv.FILLED)
-            for p in contour:
-                x, y = p[0]
-                window_top_left_y = min(window_top_left_y, y)
-                window_top_left_x = min(window_top_left_x, x)
-                window_bottom_right_y = max(window_bottom_right_y, y)
-                window_bottom_right_x = max(window_bottom_right_x, x)
-
-        self.log(3, "window: {0}, {1}, {2}, {3}".format(window_top_left_y, window_top_left_x, window_bottom_right_y, window_bottom_right_x))
-        window = img[window_top_left_y: window_bottom_right_y + 1, window_top_left_x: window_bottom_right_x + 1][:]
-
-        vectorized_pixels = window.reshape((-1,3))
-        vectorized_pixels = np.float32(vectorized_pixels)
+        vectorized_pixels, map_xy_to_position = self.prepare_vectorized_pixels(img, expanded_b_mask)
         self.log(3, "vectorized_pixels len: {0}".format(len(vectorized_pixels)))
         label, K = self.optimize_k_means(vectorized_pixels)
-        label_img = label.flatten().reshape(window.shape[:2])
+
+        label_img = self.create_label_img(img.shape[:2], label, map_xy_to_position)
         self.log(3, "label_img shape: {0}".format(label_img.shape))
 
-        count_hair_label = [0] * K
-        count_not_hair_label = [0] * K
-        for y, l_y in enumerate(label_img):
-            for x, l in enumerate(l_y):
-                if b_mask[y + window_top_left_y][x + window_top_left_x]:
-                    count_hair_label[l] += 1
-                else:
-                    count_not_hair_label[l] += 1
-
-        self.log(3, "count_hair_label: {0}".format(count_hair_label))
-        self.log(3, "count_not_hair_label: {0}".format(count_not_hair_label))
-        hairy_label = set()
-        for i in range(K):
-            if count_hair_label[i] > count_not_hair_label[i]:
-                hairy_label.add(i)
+        hairy_label = self.find_hairy_label(b_mask, K, label_img)
         self.log(3, "hairy_label: {0}".format(hairy_label))
 
-        # Modify b_mask to only contains hairy pixels
-        for y, l_y in enumerate(label_img):
-            for x, l in enumerate(l_y):
-                if l not in hairy_label and b_mask[y + window_top_left_y][x + window_top_left_x]:
-                    b_mask[y + window_top_left_y][x + window_top_left_x] = 0
+        self.remove_not_hairy_from_b_mask(b_mask, label_img, hairy_label)
 
         return (img, b_mask)
 
@@ -77,6 +42,43 @@ class HairSegmentPredictor:
         original_image = cv.imread(original_image_path)
         img = cv.cvtColor(original_image, cv.COLOR_BGR2RGB)
         return (img, masks)
+
+    def fill_b_mask(self, b_mask, masks):
+        for contour in masks.xy:
+            contour = contour.astype(np.int32)
+            contour = contour.reshape(-1, 1, 2) # make it into a shape that drawContours prefers
+            _ = cv.drawContours(b_mask, [contour], -1, (255, 255, 255), cv.FILLED)
+
+    def fill_expanded_b_mask(self, b_mask):
+        area = 0
+        for y, b_mask_y in enumerate(b_mask):
+            for x, mask in enumerate(b_mask_y):
+                if mask:
+                    area += 1
+
+        ## apply convolution to expand the mask area to give room for non-hair colors to dominate
+        expand_factor = int(np.ceil((np.sqrt(2) - 1.0) * np.sqrt(area)))
+        # have a circle kernel
+        self.log(3, "area: {0}".format(area))
+        self.log(3, "expand_factor: {0}".format(expand_factor))
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE,(expand_factor, expand_factor))
+        expanded_b_mask = cv.filter2D(b_mask, -1, kernel)
+
+        return expanded_b_mask
+
+    def prepare_vectorized_pixels(self, img, expanded_b_mask):
+        map_xy_to_position = {}
+        vectorized_pixels = []
+        for y, mask_y in enumerate(expanded_b_mask):
+            for x, mask in enumerate(mask_y):
+                if mask:
+                    map_xy_to_position[(x, y)] = len(vectorized_pixels)
+                    vectorized_pixels.append(img[y][x])
+
+        vectorized_pixels = np.array(vectorized_pixels)
+        vectorized_pixels = np.float32(vectorized_pixels)
+
+        return (vectorized_pixels, map_xy_to_position)
 
     def optimize_k_means(self, vectorized):
         if len(vectorized) < 2:
@@ -109,6 +111,44 @@ class HairSegmentPredictor:
             prev_silhouette_score = silhouette_score
 
         return label, K
+
+    def create_label_img(self, img_shape, label, map_xy_to_position):
+        label_img = np.full(img_shape, -1, np.uint8)
+        for y in range(label_img.shape[0]):
+            for x in range(label_img.shape[1]):
+                if (x, y) in map_xy_to_position:
+                    position = map_xy_to_position[(x, y)]
+                    label_img[y][x] = label[position][0]
+        return label_img
+
+    def find_hairy_label(self, b_mask, K, label_img):
+        count_hair_label = [0] * K
+        count_not_hair_label = [0] * K
+        for y, l_y in enumerate(label_img):
+            for x, l in enumerate(l_y):
+                if l != 255:
+                    if b_mask[y][x]:
+                        count_hair_label[l] += 1
+                    else:
+                        count_not_hair_label[l] += 1
+
+        self.log(3, "count_hair_label: {0}".format(count_hair_label))
+        self.log(3, "count_not_hair_label: {0}".format(count_not_hair_label))
+        hairy_label = set()
+
+        for i in range(K):
+            if count_hair_label[i] > count_not_hair_label[i]:
+                hairy_label.add(i)
+        return hairy_label
+
+    def remove_not_hairy_from_b_mask(self, b_mask, label_img, hairy_label):
+        """
+            Modify b_mask to only contains hairy pixels
+        """
+        for y, l_y in enumerate(label_img):
+            for x, l in enumerate(l_y):
+                if l != 255 and l not in hairy_label and b_mask[y][x]:
+                    b_mask[y][x] = 0
 
     def log(self, level, s):
         if level > 1:
