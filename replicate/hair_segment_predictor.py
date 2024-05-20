@@ -36,7 +36,7 @@ class HairSegmentPredictor:
     def find_contours(self, original_image_path):
         # Run batched inference on a list of images
         original_image = cv.imread(original_image_path)
-        if not original_image:
+        if original_image.size == 0:
             return original_image, None
         result = self.model(original_image).pop()  # return a list of Results objects
 
@@ -203,7 +203,7 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
         hair_segment_predictor.setup()
 
     img, b_mask = hair_segment_predictor.find_mask(image_path)
-    if not b_mask:
+    if img.size == 0:
         return None
 
     sample = []
