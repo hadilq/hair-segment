@@ -216,6 +216,9 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
         if b_mask[y][x]:
           sample.append(img[x][y])
 
+    if len(sample) == 0:
+        return None
+
     sample_in_hue = cv.cvtColor(np.array([sample]), cv.COLOR_RGB2HSV)[0][:, :1]
     sample_in_hue = sample_in_hue.reshape((sample_in_hue.shape[0],))
     hair_segment_predictor.log(3, "sample shape: {0}, sample type: {1}".format(sample_in_hue.shape, sample_in_hue.dtype))
