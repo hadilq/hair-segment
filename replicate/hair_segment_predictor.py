@@ -232,12 +232,13 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
 
     mean_hue /= np.float32(len(sample_in_hue))
 
+    sample_in_hue = np.sort(sample_in_hue, axis=None)
     median_hue = np.uint8(0)
     if len(sample_in_hue) % 2 == 0:
         middle = len(sample_in_hue) // 2
-        median_hue = (sample_in_hue[middle] + sample_in_hue[middle + 1]) / 2
+        median_hue = np.uint8((sample_in_hue[middle] + sample_in_hue[middle + 1]) / 2)
     else:
-        median_hue = sample_in_hue[len(sample_in_hue) // 2 + 1]
+        median_hue = np.uint8(sample_in_hue[len(sample_in_hue) // 2 + 1])
 
     mean_hue = np.uint8(np.floor(mean_hue))
     data = {
