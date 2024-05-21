@@ -12,8 +12,10 @@ class HairSegmentPredictor:
 
     def find_mask(self, original_image_path):
         img, masks = self.find_contours(original_image_path)
+        if img is None:
+            return (img, None)
         b_mask = np.zeros(img.shape[:2], np.uint8)
-        if not masks:
+        if masks is None:
             return (img, b_mask)
 
         self.fill_b_mask(b_mask, masks)
@@ -36,7 +38,7 @@ class HairSegmentPredictor:
     def find_contours(self, original_image_path):
         # Run batched inference on a list of images
         original_image = cv.imread(original_image_path)
-        if original_image.size == 0:
+        if original_image is None or original_image.size == 0:
             return original_image, None
         result = self.model(original_image).pop()  # return a list of Results objects
 
@@ -162,6 +164,8 @@ def predict(image_path):
     hair_segment_predictor.setup()
 
     img, b_mask = hair_segment_predictor.find_mask(image_path)
+    if img is None or img.size == 0:
+        return None
 
     for y in range(b_mask.shape[0]):
       for x in range(b_mask.shape[1]):
@@ -191,7 +195,7 @@ def make_hsv_dataset(input_dir, output_dir):
         if os.path.exists(data_output_path):
             continue
         data = make_hsv_data(image_path, output_dir, hair_segment_predictor)
-        if not data:
+        if data is None:
             continue
         hair_segment_predictor.log(4, "data: {0}".format(data))
         with open(data_output_path, 'w') as f:
@@ -203,7 +207,7 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
         hair_segment_predictor.setup()
 
     img, b_mask = hair_segment_predictor.find_mask(image_path)
-    if img.size == 0:
+    if img is None or img.size == 0:
         return None
 
     sample = []
@@ -215,9 +219,9 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
     sample_in_hue = cv.cvtColor(np.array([sample]), cv.COLOR_RGB2HSV)[0][:, :1]
     sample_in_hue = sample_in_hue.reshape((sample_in_hue.shape[0],))
     hair_segment_predictor.log(3, "sample shape: {0}, sample type: {1}".format(sample_in_hue.shape, sample_in_hue.dtype))
-    min_hue = 255
-    max_hue = 0
-    mean_hue = 0.0
+    min_hue = np.uint8(179)
+    max_hue = np.uint8(0)
+    mean_hue = np.float32(0.0)
     for h in sample_in_hue:
         min_hue = min(min_hue, h)
         max_hue = max(max_hue, h)
@@ -225,13 +229,14 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
 
     mean_hue /= np.float32(len(sample_in_hue))
 
-    median_hue = 0
+    median_hue = np.uint8(0)
     if len(sample_in_hue) % 2 == 0:
         middle = len(sample_in_hue) // 2
         median_hue = (sample_in_hue[middle] + sample_in_hue[middle + 1]) / 2
     else:
         median_hue = sample_in_hue[len(sample_in_hue) // 2 + 1]
 
+    mean_hue = np.uint8(np.floor(mean_hue))
     data = {
         'min_hue': min_hue.item(),
         'max_hue': max_hue.item(),
