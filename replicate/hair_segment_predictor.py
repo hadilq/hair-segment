@@ -189,20 +189,20 @@ def make_hsv_dataset(input_dir, output_dir):
     import json
     from PIL import Image as Img
     for image_path in glob.glob(os.path.abspath(input_dir) + '/*.jpg'):
-        hair_segment_predictor.log(4, "image_path: {0}".format(image_path))
+        log(2, "image_path: {0}".format(image_path))
         image_name = os.path.basename(image_path)
         splitted_name = os.path.splitext(image_name)
         data_name = splitted_name[0] + '.json'
         data_output_path = os.path.join(output_dir, data_name)
         gray_name = splitted_name[0] + '-gray-hair.jpg'
         gray_output_path = os.path.join(output_dir, gray_name)
-        hair_segment_predictor.log(4, "data_output_path: {0}".format(data_output_path))
+        log(2, "data_output_path: {0}".format(data_output_path))
         if os.path.exists(data_output_path) and os.path.exists(gray_output_path):
             continue
         img, b_mask, data = make_hsv_data(image_path, hair_segment_predictor)
         if data is None:
             continue
-        hair_segment_predictor.log(4, "data: {0}".format(data))
+        log(2, "data: {0}".format(data))
         with open(data_output_path, 'w') as f:
             json.dump(data, f)
         gray_img = make_gray_hair(img, b_mask)
@@ -216,7 +216,7 @@ def make_hsv_data(image_path, hair_segment_predictor = None):
 
     img, b_mask = hair_segment_predictor.find_mask(image_path)
     if img is None or img.size == 0:
-        return None
+        return img, b_mask, None
 
     sample = []
     for y in range(b_mask.shape[0]):
@@ -225,11 +225,11 @@ def make_hsv_data(image_path, hair_segment_predictor = None):
           sample.append(img[x][y])
 
     if len(sample) == 0:
-        return None
+        return img, b_mask, None
 
     sample_in_hue = cv.cvtColor(np.array([sample]), cv.COLOR_RGB2HSV)[0][:, :1]
     sample_in_hue = sample_in_hue.reshape((sample_in_hue.shape[0],))
-    hair_segment_predictor.log(3, "sample shape: {0}, sample type: {1}".format(sample_in_hue.shape, sample_in_hue.dtype))
+    log(2, "sample shape: {0}, sample type: {1}".format(sample_in_hue.shape, sample_in_hue.dtype))
     min_hue = np.uint8(179)
     max_hue = np.uint8(0)
     mean_hue = np.float32(0.0)
@@ -261,4 +261,21 @@ def make_gray_hair(img, b_mask):
     gray_img = img.copy()
     gray_img = cv.cvtColor(gray_img, cv.COLOR_RGB2GRAY)
     return gray_img
+
+def test_if_all_json_are_parcelable(input_dir):
+    import glob
+    import json
+    for json_path in glob.glob(input_dir+ f'/*.json'):
+        with open(json_path, 'r') as f:
+            try:
+                data = json.loads(f.read())
+                log(1, "All good: {0}".format(json_path))
+            except json.JSONDecodeError as e:
+                log(2, "Invalid JSON syntax: {0}".format(e))
+                log(2, "json path: {0}".format(json_path))
+                os.remove(json_path)
+
+def log(level, s):
+    if level > 1:
+        print(s)
 
