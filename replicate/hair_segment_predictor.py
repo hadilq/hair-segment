@@ -187,21 +187,29 @@ def make_hsv_dataset(input_dir, output_dir):
 
     import glob
     import json
+    from PIL import Image as Img
     for image_path in glob.glob(os.path.abspath(input_dir) + '/*.jpg'):
         hair_segment_predictor.log(4, "image_path: {0}".format(image_path))
         image_name = os.path.basename(image_path)
-        data_output_path = os.path.join(output_dir, image_name)
+        splitted_name = os.path.splitext(image_name)
+        data_name = splitted_name[0] + '.json'
+        data_output_path = os.path.join(output_dir, data_name)
+        gray_name = splitted_name[0] + '-gray-hair.jpg'
+        gray_output_path = os.path.join(output_dir, gray_name)
         hair_segment_predictor.log(4, "data_output_path: {0}".format(data_output_path))
-        if os.path.exists(data_output_path):
+        if os.path.exists(data_output_path) and os.path.exists(gray_output_path):
             continue
-        data = make_hsv_data(image_path, output_dir, hair_segment_predictor)
+        img, b_mask, data = make_hsv_data(image_path, hair_segment_predictor)
         if data is None:
             continue
         hair_segment_predictor.log(4, "data: {0}".format(data))
         with open(data_output_path, 'w') as f:
             json.dump(data, f)
+        gray_img = make_gray_hair(img, b_mask)
+        Img.fromarray(gray_img).save(gray_output_path)
 
-def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
+
+def make_hsv_data(image_path, hair_segment_predictor = None):
     if not hair_segment_predictor:
         hair_segment_predictor = HairSegmentPredictor()
         hair_segment_predictor.setup()
@@ -247,5 +255,10 @@ def make_hsv_data(image_path, output_dir, hair_segment_predictor = None):
         'mean_hue': mean_hue.item(),
         'median_hue': median_hue.item()
     }
-    return data
+    return img, b_mask, data
+
+def make_gray_hair(img, b_mask):
+    gray_img = img.copy()
+    gray_img = cv.cvtColor(gray_img, cv.COLOR_RGB2GRAY)
+    return gray_img
 
