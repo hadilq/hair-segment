@@ -196,6 +196,8 @@ def make_hsv_dataset(input_dir, output_dir):
         data_output_path = os.path.join(output_dir, data_name)
         gray_name = splitted_name[0] + '-gray-hair.jpg'
         gray_output_path = os.path.join(output_dir, gray_name)
+        b_mask_name = splitted_name[0] + '-b-mask.png'
+        b_mask_output_path = os.path.join(output_dir, b_mask_name)
         log(2, "data_output_path: {0}".format(data_output_path))
         if os.path.exists(data_output_path) and os.path.exists(gray_output_path):
             continue
@@ -207,6 +209,7 @@ def make_hsv_dataset(input_dir, output_dir):
             json.dump(data, f)
         gray_img = make_gray_hair(img, b_mask)
         Img.fromarray(gray_img).save(gray_output_path)
+        Img.fromarray(b_mask).save(b_mask_output_path)
 
 
 def make_hsv_data(image_path, hair_segment_predictor = None):
@@ -262,7 +265,7 @@ def make_gray_hair(img, b_mask):
     gray_img = cv.cvtColor(gray_img, cv.COLOR_RGB2GRAY)
     return gray_img
 
-def test_if_all_json_are_parcelable(input_dir):
+def test_if_all_files_are_parcelable(input_dir):
     import glob
     import json
     for json_path in glob.glob(input_dir+ f'/*.json'):
@@ -274,6 +277,12 @@ def test_if_all_json_are_parcelable(input_dir):
                 log(2, "Invalid JSON syntax: {0}".format(e))
                 log(2, "json path: {0}".format(json_path))
                 os.remove(json_path)
+    for png_path in glob.glob(input_dir+ f'/*.png'):
+        b_mask = cv.imread(png_path)
+        if b_mask is None:
+            log(2, "png path: {0}".format(png_path))
+            os.remove(png_path)
+
 
 def log(level, s):
     if level > 1:
