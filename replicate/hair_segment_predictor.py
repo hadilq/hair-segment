@@ -20,7 +20,8 @@ class HairSegmentPredictor:
 
         self.fill_b_mask(b_mask, masks)
         area = self.calculate_area(b_mask)
-        while area:
+        hairy_label = set()
+        while area and not hairy_label:
             expanded_b_mask = self.fill_expanded_b_mask(area, b_mask)
 
             vectorized_pixels, map_xy_to_position = self.prepare_vectorized_pixels(img, expanded_b_mask)
@@ -32,10 +33,7 @@ class HairSegmentPredictor:
 
             hairy_label = self.find_hairy_label(b_mask, K, label_img)
             log(3, "hairy_label: {0}", hairy_label)
-            if not hairy_label:
-                area  *= 2/3
-                continue
-            break
+            area  *= 2/3
 
         self.remove_not_hairy_from_b_mask(b_mask, label_img, hairy_label)
 
