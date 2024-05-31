@@ -19,17 +19,23 @@ class HairSegmentPredictor:
             return (img, b_mask)
 
         self.fill_b_mask(b_mask, masks)
-        expanded_b_mask = self.fill_expanded_b_mask(b_mask)
+        area = self.calculate_area(b_mask)
+        while area:
+            expanded_b_mask = self.fill_expanded_b_mask(area, b_mask)
 
-        vectorized_pixels, map_xy_to_position = self.prepare_vectorized_pixels(img, expanded_b_mask)
-        self.log(3, "vectorized_pixels len: {0}".format(len(vectorized_pixels)))
-        label, K = self.optimize_k_means(vectorized_pixels)
+            vectorized_pixels, map_xy_to_position = self.prepare_vectorized_pixels(img, expanded_b_mask)
+            log(3, "vectorized_pixels len: {0}", len(vectorized_pixels))
+            label, K = self.optimize_k_means(vectorized_pixels)
 
-        label_img = self.create_label_img(img.shape[:2], label, map_xy_to_position)
-        self.log(3, "label_img shape: {0}".format(label_img.shape))
+            label_img = self.create_label_img(img.shape[:2], label, map_xy_to_position)
+            log(3, "label_img shape: {0}", label_img.shape)
 
-        hairy_label = self.find_hairy_label(b_mask, K, label_img)
-        self.log(3, "hairy_label: {0}".format(hairy_label))
+            hairy_label = self.find_hairy_label(b_mask, K, label_img)
+            log(3, "hairy_label: {0}", hairy_label)
+            if not hairy_label:
+                area  *= 2/3
+                continue
+            break
 
         self.remove_not_hairy_from_b_mask(b_mask, label_img, hairy_label)
 
@@ -53,18 +59,20 @@ class HairSegmentPredictor:
             contour = contour.reshape(-1, 1, 2) # make it into a shape that drawContours prefers
             _ = cv.drawContours(b_mask, [contour], -1, (255, 255, 255), cv.FILLED)
 
-    def fill_expanded_b_mask(self, b_mask):
+    def calculate_area(self, b_mask):
         area = 0
         for y, b_mask_y in enumerate(b_mask):
             for x, mask in enumerate(b_mask_y):
                 if mask:
                     area += 1
+        return area
 
+    def fill_expanded_b_mask(self, area, b_mask):
         ## apply convolution to expand the mask area to give room for non-hair colors to dominate
         expand_factor = int(np.ceil((np.sqrt(2) - 1.0) * np.sqrt(area)))
         # have a circle kernel
-        self.log(3, "area: {0}".format(area))
-        self.log(3, "expand_factor: {0}".format(expand_factor))
+        log(3, "area: {0}", area)
+        log(3, "expand_factor: {0}", expand_factor)
         kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE,(expand_factor, expand_factor))
         expanded_b_mask = cv.filter2D(b_mask, -1, kernel)
 
@@ -86,7 +94,7 @@ class HairSegmentPredictor:
 
     def optimize_k_means(self, vectorized):
         if len(vectorized) < 2:
-            self.log(3, "vectorized's len is {0}".format(vectorized))
+            log(3, "vectorized's len is {0}", vectorized)
             return np.array([0] * len(vectorized)), len(vectorized)
 
         def silhouette_coefficient(label, center):
@@ -105,7 +113,7 @@ class HairSegmentPredictor:
 
         prev_silhouette_score = float("inf")
         for K in range(3, min(500, len(vectorized))):
-            self.log(3, "K: {0}".format(K))
+            log(3, "K: {0}", K)
             compactness, label, center = cv.kmeans(vectorized, K, None, criteria, attempts, cv.KMEANS_PP_CENTERS)
             silhouette_score = silhouette_coefficient(label, center)
             if silhouette_score > prev_silhouette_score:
@@ -136,8 +144,8 @@ class HairSegmentPredictor:
                     else:
                         count_not_hair_label[l] += 1
 
-        self.log(3, "count_hair_label: {0}".format(count_hair_label))
-        self.log(3, "count_not_hair_label: {0}".format(count_not_hair_label))
+        log(3, "count_hair_label: {0}", count_hair_label)
+        log(3, "count_not_hair_label: {0}", count_not_hair_label)
         hairy_label = set()
 
         for i in range(K):
@@ -153,10 +161,6 @@ class HairSegmentPredictor:
             for x, l in enumerate(l_y):
                 if l != 255 and l not in hairy_label and b_mask[y][x]:
                     b_mask[y][x] = 0
-
-    def log(self, level, s):
-        if level > 1:
-            print(s)
 
 ## Helper function to predict
 def predict(image_path):
@@ -189,7 +193,7 @@ def make_hsv_dataset(input_dir, output_dir):
     import json
     from PIL import Image as Img
     for image_path in glob.glob(os.path.abspath(input_dir) + '/*.jpg'):
-        log(2, "image_path: {0}".format(image_path))
+        log(2, "image_path: {0}", image_path)
         image_name = os.path.basename(image_path)
         splitted_name = os.path.splitext(image_name)
         data_name = splitted_name[0] + '.json'
@@ -198,14 +202,14 @@ def make_hsv_dataset(input_dir, output_dir):
         gray_output_path = os.path.join(output_dir, gray_name)
         b_mask_name = splitted_name[0] + '-b-mask.png'
         b_mask_output_path = os.path.join(output_dir, b_mask_name)
-        log(2, "data_output_path: {0}".format(data_output_path))
+        log(2, "data_output_path: {0}", data_output_path)
         if os.path.exists(data_output_path) and os.path.exists(gray_output_path)\
             and os.path.exists(b_mask_output_path):
             continue
         img, b_mask, data = make_hsv_data(image_path, hair_segment_predictor)
         if data is None:
             continue
-        log(2, "data: {0}".format(data))
+        log(2, "data: {0}", data)
         with open(data_output_path, 'w') as f:
             json.dump(data, f)
         gray_img = make_gray_hair(img, b_mask)
@@ -233,7 +237,7 @@ def make_hsv_data(image_path, hair_segment_predictor = None):
 
     sample_in_hue = cv.cvtColor(np.array([sample]), cv.COLOR_RGB2HSV)[0][:, :1]
     sample_in_hue = sample_in_hue.reshape((sample_in_hue.shape[0],))
-    log(2, "sample shape: {0}, sample type: {1}".format(sample_in_hue.shape, sample_in_hue.dtype))
+    log(2, "sample shape: {0}, sample type: {1}", sample_in_hue.shape, sample_in_hue.dtype)
     min_hue = np.uint8(179)
     max_hue = np.uint8(0)
     mean_hue = np.float32(0.0)
@@ -273,19 +277,22 @@ def test_if_all_files_are_parcelable(input_dir):
         with open(json_path, 'r') as f:
             try:
                 data = json.loads(f.read())
-                log(1, "All good: {0}".format(json_path))
+                log(1, "All good: {0}", json_path)
             except json.JSONDecodeError as e:
-                log(2, "Invalid JSON syntax: {0}".format(e))
-                log(2, "json path: {0}".format(json_path))
+                log(2, "Invalid JSON syntax: {0}", e)
+                log(2, "json path: {0}", json_path)
                 os.remove(json_path)
     for png_path in glob.glob(input_dir+ f'/*.png'):
         b_mask = cv.imread(png_path)
         if b_mask is None:
-            log(2, "png path: {0}".format(png_path))
+            log(2, "png path: {0}", png_path)
             os.remove(png_path)
 
 
-def log(level, s):
-    if level > 1:
-        print(s)
+def log(level, s, *arg):
+    if level > 2:
+       if arg:
+           print(s.format(*arg))
+       else:
+           print(s)
 
