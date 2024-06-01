@@ -191,7 +191,7 @@ def make_hsv_dataset(input_dir, output_dir):
     import json
     from PIL import Image as Img
     for image_path in glob.glob(os.path.abspath(input_dir) + '/*.jpg'):
-        log(2, "image_path: {0}", image_path)
+        log(3, "image_path: {0}", image_path)
         image_name = os.path.basename(image_path)
         splitted_name = os.path.splitext(image_name)
         data_name = splitted_name[0] + '.json'
@@ -200,14 +200,14 @@ def make_hsv_dataset(input_dir, output_dir):
         gray_output_path = os.path.join(output_dir, gray_name)
         b_mask_name = splitted_name[0] + '-b-mask.png'
         b_mask_output_path = os.path.join(output_dir, b_mask_name)
-        log(2, "data_output_path: {0}", data_output_path)
+        log(3, "data_output_path: {0}", data_output_path)
         if os.path.exists(data_output_path) and os.path.exists(gray_output_path)\
             and os.path.exists(b_mask_output_path):
             continue
         img, b_mask, data = make_hsv_data(image_path, hair_segment_predictor)
         if data is None:
             continue
-        log(2, "data: {0}", data)
+        log(3, "data: {0}", data)
         with open(data_output_path, 'w') as f:
             json.dump(data, f)
         gray_img = make_gray_hair(img, b_mask)
@@ -261,6 +261,7 @@ def make_hsv_data(image_path, hair_segment_predictor = None):
         'mean_hue': mean_hue.item(),
         'median_hue': median_hue.item()
     }
+    log(3, "data: {0}", data)
     return img, b_mask, data
 
 def make_gray_hair(img, b_mask):
